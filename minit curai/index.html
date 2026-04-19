@@ -1,505 +1,502 @@
-import React, { useState, useEffect } from 'react';
-import { FileText, List, Printer, Save, ArrowLeft, PlusCircle, CheckCircle, AlertCircle } from 'lucide-react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, addDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
-
-// Inisialisasi Firebase untuk penyimpanan pangkalan data automatik
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-const app = firebaseConfig ? initializeApp(firebaseConfig) : null;
-const auth = app ? getAuth(app) : null;
-const db = app ? getFirestore(app) : null;
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
-// Senarai nama staf diekstrak dari dokumen yang dimuat naik
-const senaraiNamaStaff = [
-  "AZIZ BIN TAHIR", "MOHAMAD ABIDIN BIN SIPEK", "LING MEE CHOO", "SALIHIN BIN AHMAD",
-  "AIDA MASTURINA BINTI HAMKA", "AIFA NUR BESTARI BINTI RADUAN", "BRYAN ANAK CONSTANT",
-  "CHRISTIAN SIMON", "DLIYANA ANAK JOHN", "EIFILISIA AMBER ANAK MERVIN", "FAZRI BIN BAKERI",
-  "HAIROL BIN ISMAIL", "HILWA HAYATI BINTI MOHAMAD AJALAN", "JACQUELINE TIONG HOE DING",
-  "JERIAH ANAK SIMON", "JIMMY ANAK PETER", "KHAIRI BIN SAHARI", 
-  "MARY JANE AMOI UMPANG ANAK DANIEL MAWAT", "MOHD RAFEEQ BIN SULAIMAN", 
-  "MUHAMMAD ZULHUSAINI BIN ABDUL WAHAB", "NUR HIDAYU BINTI YUSOP", 
-  "NURUL HUDA BTE MOHD IHWAN", "NUR AZLIN BINTI NORIZAN", "NUR FADZLIAH AMAL BINTI OSMAN",
-  "SABARIAH BINTI SOLHI", "SYAEEZA LIANA BINTI RAMLI", "TENG RU YUN", "TING HUA EE",
-  "TING YU YONG", "VANITHA A/P SUBRAMANIAM", "WONG PICK KING", "ZEPRINA ANAK BENIK",
-  "NORMIRI BINTI ABDULLAH", "HAZUANI BINTI HIPNI", "HELLEN RANJA ANAK BELI", 
-  "NORAISYAH BINTI ASHARI", "KAMARIA BINTI BUJANG", "AZENI BIN MAT", "EVELYN SENA ANAK USSIK",
-  "MARIATI BINTI JULAIHI", "ALEXANDER LIPA ANAK RANTIE"
-];
-
-export default function SistemMinitCurai() {
-  const [activeTab, setActiveTab] = useState('form'); // 'form', 'list', 'print'
-  const [records, setRecords] = useState([]);
-  const [currentRecord, setCurrentRecord] = useState(null);
-  const [user, setUser] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [toastMessage, setToastMessage] = useState(null);
-
-  // State untuk form
-  const [formData, setFormData] = useState({
-    rujukanBil: '',
-    namaPegawai: '',
-    jawatan: '',
-    perkara: '',
-    tarikh: '',
-    tempat: '',
-    anjuran: '',
-    pengerusi: '',
-    bahanEdaran: 'Ada',
-    kandunganPenganjuran: '',
-    kandunganObjektif: '',
-    kandunganKandungan: '',
-    kandunganLain: '',
-    tindakanSusulan: ''
-  });
-
-  // 1. Pengesahan Pengguna (Auth)
-  useEffect(() => {
-    if (!auth) return;
-    const initAuth = async () => {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (error) {
-        console.error("Auth Error:", error);
-      }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
-    return () => unsubscribe();
-  }, []);
-
-  // 2. Tarik Rekod dari Pangkalan Data
-  useEffect(() => {
-    if (!user || !db) return;
-    const dbRef = collection(db, 'artifacts', appId, 'public', 'data', 'minit_curai');
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Minit Curai SKPK Miri</title>
     
-    const unsubscribe = onSnapshot(dbRef, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // Susun rekod dari yang paling baharu ke lama
-      data.sort((a, b) => {
-        const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : Date.now();
-        const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : Date.now();
-        return timeB - timeA;
-      });
-      setRecords(data);
-    }, (error) => {
-      console.error("Firestore Error:", error);
-    });
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
     
-    return () => unsubscribe();
-  }, [user]);
-
-  // Handle perubahan input borang
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const showToast = (msg, type = 'success') => {
-    setToastMessage({ msg, type });
-    setTimeout(() => setToastMessage(null), 3000);
-  };
-
-  // Simpan Borang
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!db || !user) {
-      showToast("Sistem di luar talian. Rekod tidak dapat disimpan.", "error");
-      return;
-    }
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    setIsSubmitting(true);
-    try {
-      const dbRef = collection(db, 'artifacts', appId, 'public', 'data', 'minit_curai');
-      await addDoc(dbRef, {
-        ...formData,
-        createdAt: serverTimestamp(),
-        userId: user.uid
-      });
-      showToast("Minit Curai berjaya disimpan!", "success");
-      // Kosongkan form
-      setFormData({
-        rujukanBil: '', namaPegawai: '', jawatan: '', perkara: '', tarikh: '', tempat: '', anjuran: '', pengerusi: '', bahanEdaran: 'Ada', kandunganPenganjuran: '', kandunganObjektif: '', kandunganKandungan: '', kandunganLain: '', tindakanSusulan: ''
-      });
-      setActiveTab('list'); // Pergi ke tab senarai
-    } catch (error) {
-      console.error("Submit error:", error);
-      showToast("Ralat ketika menyimpan borang.", "error");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel (Untuk membolehkan JSX dibaca terus oleh pelayar) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Firebase SDK (Versi Compat untuk HTML Standalone) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
 
-  // Papar Rekod untuk Cetakan
-  const handleViewRecord = (record) => {
-    setCurrentRecord(record);
-    setActiveTab('print');
-  };
-
-  // Paparan Borang Isi (View)
-  const FormView = () => (
-    <div className="max-w-4xl mx-auto bg-white p-8 rounded-lg shadow-md no-print mt-6 mb-12">
-      <h2 className="text-2xl font-bold mb-6 text-gray-800 border-b pb-2 flex items-center">
-        <PlusCircle className="mr-2 text-blue-600" /> Isi Borang Minit Curai Baru
-      </h2>
-      <form onSubmit={handleSubmit} className="space-y-6">
-        
-        {/* Bahagian Atas */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="col-span-1 md:col-span-2">
-            <label className="block text-sm font-medium text-gray-700">Rujukan Bilangan</label>
-            <div className="flex items-center mt-1">
-              <span className="bg-gray-100 border border-r-0 border-gray-300 rounded-l-md px-3 py-2 text-sm text-gray-600 font-semibold whitespace-nowrap">
-                SKPKM.500-8/8/4(
-              </span>
-              <input type="text" name="rujukanBil" value={formData.rujukanBil} onChange={handleChange} className="flex-1 block w-full rounded-none border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" placeholder="Cth: 12 (Boleh dikosongkan)" />
-              <span className="bg-gray-100 border border-l-0 border-gray-300 rounded-r-md px-3 py-2 text-sm text-gray-600 font-semibold">
-                )
-              </span>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Nama</label>
-            <select name="namaPegawai" required value={formData.namaPegawai} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border bg-white">
-              <option value="">-- Sila Pilih Nama --</option>
-              {senaraiNamaStaff.map((nama, index) => (
-                <option key={index} value={nama}>{nama}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Jawatan</label>
-            <input type="text" name="jawatan" required value={formData.jawatan} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" placeholder="Cth: Guru Akademik Biasa" />
-          </div>
-
-          <div className="col-span-1 md:col-span-2">
-            <label className="block text-sm font-medium text-gray-700">Perkara / Tajuk Kursus</label>
-            <input type="text" name="perkara" required value={formData.perkara} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" placeholder="Tajuk seperti dalam surat panggilan..." />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Tarikh / Tempoh Kursus</label>
-            <input type="text" name="tarikh" required value={formData.tarikh} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" placeholder="Cth: 12 - 14 Mei 2026" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Tempat</label>
-            <input type="text" name="tempat" required value={formData.tempat} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" placeholder="Cth: PKG Miri" />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Anjuran</label>
-            <input type="text" name="anjuran" required value={formData.anjuran} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" placeholder="Cth: PPD Miri" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Pengerusi</label>
-            <input type="text" name="pengerusi" required value={formData.pengerusi} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" placeholder="Nama pengerusi / penceramah utama" />
-          </div>
-
-          <div className="col-span-1 md:col-span-2">
-            <label className="block text-sm font-medium text-gray-700">Bahan Edaran</label>
-            <div className="flex items-center space-x-6 mt-2">
-              <label className="flex items-center cursor-pointer">
-                <input type="radio" name="bahanEdaran" value="Ada" checked={formData.bahanEdaran === 'Ada'} onChange={handleChange} className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500" />
-                <span className="ml-2 text-gray-700">Ada</span>
-              </label>
-              <label className="flex items-center cursor-pointer">
-                <input type="radio" name="bahanEdaran" value="Tiada" checked={formData.bahanEdaran === 'Tiada'} onChange={handleChange} className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500" />
-                <span className="ml-2 text-gray-700">Tiada</span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        {/* Bahagian Kandungan */}
-        <div className="mt-8 border-t pt-6 space-y-6">
-          <h3 className="text-lg font-bold text-gray-800">Catatan Minit / Kandungan Kursus</h3>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">1. Penganjuran</label>
-            <textarea name="kandunganPenganjuran" required value={formData.kandunganPenganjuran} onChange={handleChange} rows="3" className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" placeholder="Nyatakan penganjur, tempoh kursus, bilangan peserta, tempat..."></textarea>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">2. Objektif Kursus</label>
-            <textarea name="kandunganObjektif" required value={formData.kandunganObjektif} onChange={handleChange} rows="3" className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" placeholder="Nyatakan objektif kursus..."></textarea>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">3. Kandungan Kursus LCML</label>
-            <textarea name="kandunganKandungan" required value={formData.kandunganKandungan} onChange={handleChange} rows="4" className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" placeholder="Nyatakan kandungan kursus sepanjang tempoh, aktiviti/tugasan diberi..."></textarea>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">4. Lain-Lain</label>
-            <textarea name="kandunganLain" required value={formData.kandunganLain} onChange={handleChange} rows="3" className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" placeholder="Nyatakan dapatan kursus, apa yang hendak dilakukan apabila kembali ke sekolah nanti..."></textarea>
-          </div>
-          
-          <div className="bg-gray-50 p-4 rounded-md border border-gray-200">
-            <label className="block text-sm font-bold text-gray-800 mb-1">Tindakan Susulan Oleh Ketua Jabatan</label>
-            <p className="text-xs text-gray-500 mb-2">Maklumkan apa tindakan susulan peserta hendak lakukan supaya ketua jabatan boleh memantau. (Boleh dibiarkan kosong)</p>
-            <textarea name="tindakanSusulan" value={formData.tindakanSusulan} onChange={handleChange} rows="3" className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" placeholder="Tindakan susulan anda..."></textarea>
-          </div>
-        </div>
-
-        <div className="flex justify-end pt-4">
-          <button type="submit" disabled={isSubmitting} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-md shadow-md flex items-center transition-colors disabled:bg-blue-400">
-            {isSubmitting ? 'Menyimpan...' : <><Save className="w-5 h-5 mr-2" /> Simpan Minit Curai</>}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-
-  // Paparan Senarai Rekod (View)
-  const ListView = () => (
-    <div className="max-w-6xl mx-auto bg-white p-8 rounded-lg shadow-md no-print mt-6 mb-12">
-      <h2 className="text-2xl font-bold mb-6 text-gray-800 border-b pb-2 flex items-center">
-        <List className="mr-2 text-blue-600" /> Rekod Minit Curai
-      </h2>
-      
-      {records.length === 0 ? (
-        <div className="text-center py-16 text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-          <FileText className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-          <p className="text-lg">Tiada rekod minit curai buat masa ini.</p>
-          <button onClick={() => setActiveTab('form')} className="mt-4 text-blue-600 hover:underline">Isi borang pertama</button>
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 border">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No. Rujukan</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Perkara / Kursus</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tarikh</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Tindakan</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {records.map((record) => (
-                <tr key={record.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    SKPKM.500-8/8/4({record.rujukanBil})
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{record.namaPegawai}</td>
-                  <td className="px-6 py-4 text-sm text-gray-700 max-w-xs truncate" title={record.perkara}>{record.perkara}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{record.tarikh}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button 
-                      onClick={() => handleViewRecord(record)}
-                      className="text-blue-600 hover:text-blue-900 bg-blue-50 px-3 py-1 rounded border border-blue-200 flex items-center ml-auto transition-colors"
-                    >
-                      <Printer className="w-4 h-4 mr-1" /> Papar & Cetak
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-
-  // Paparan Cetak / PDF Format (View)
-  const PrintView = () => {
-    if (!currentRecord) return null;
-    const r = currentRecord;
-
-    return (
-      <div className="print-wrapper py-6 no-print-bg">
-        {/* Toolbar untuk print */}
-        <div className="max-w-[210mm] mx-auto mb-4 flex justify-between items-center no-print">
-          <button onClick={() => setActiveTab('list')} className="text-gray-600 hover:text-gray-900 flex items-center bg-white px-4 py-2 rounded shadow-sm border border-gray-200">
-            <ArrowLeft className="w-4 h-4 mr-2" /> Kembali ke Senarai
-          </button>
-          <div className="flex items-center space-x-4">
-            <span className="text-sm text-gray-500">Pilih 'Save as PDF' di tetingkap cetakan</span>
-            <button onClick={() => window.print()} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded shadow-md flex items-center transition-colors">
-              <Printer className="w-5 h-5 mr-2" /> Jana PDF / Cetak
-            </button>
-          </div>
-        </div>
-
-        {/* Kertas A4 */}
-        <div className="print-view bg-white text-black mx-auto w-full max-w-[210mm] min-h-[297mm] p-[20mm] shadow-xl border border-gray-300 relative">
-          
-          {/* Header Surat */}
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-24 flex-shrink-0">
-              {/* Logo yang dimuat naik */}
-              <img src="logo.png" alt="Logo SKPK Miri" className="w-24 h-24 object-contain" 
-                   onError={(e) => { 
-                     e.target.onerror = null; 
-                     e.target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="none" stroke="%23000" stroke-width="2"/><text x="50" y="50" dominant-baseline="middle" text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold">LOGO</text></svg>' 
-                   }} 
-              />
-            </div>
-            <div className="flex-1 text-center">
-              <p className="font-bold text-lg m-0">SEKOLAH KEBANGSAAN PENDIDIKAN KHAS MIRI</p>
-              <p className="m-0 text-base">JALAN DATUK MUIP, PIASAU JAYA</p>
-              <p className="m-0 text-base">98000 MIRI, SARAWAK</p>
-            </div>
-            <div className="w-24 flex-shrink-0"></div> {/* Spacer untuk keseimbangan grid */}
-          </div>
-
-          <div className="text-right mb-6 text-sm font-semibold">
-            <p>RUJUKAN BIL: SKPKM.500-8/8/4({r.rujukanBil})</p>
-          </div>
-
-          <h1 className="text-center font-bold text-lg underline mb-8">BORANG LAPORAN / MINIT CURAI</h1>
-
-          {/* Maklumat Asas */}
-          <div className="text-[14px] leading-relaxed mb-6 space-y-2">
-            <div className="flex">
-              <div className="w-40 font-semibold uppercase">NAMA</div>
-              <div className="w-4 text-center">:</div>
-              <div className="flex-1 border-b border-dotted border-black font-semibold uppercase px-2">{r.namaPegawai}</div>
-              <div className="w-24 font-semibold uppercase text-right mr-4">JAWATAN:</div>
-              <div className="w-48 border-b border-dotted border-black font-semibold uppercase px-2">{r.jawatan}</div>
-            </div>
-            
-            {[
-              ['PERKARA', r.perkara],
-              ['TARIKH', r.tarikh],
-              ['TEMPAT', r.tempat],
-              ['ANJURAN', r.anjuran],
-              ['PENGERUSI', r.pengerusi],
-              ['BAHAN EDARAN', r.bahanEdaran]
-            ].map(([label, val]) => (
-              <div className="flex" key={label}>
-                <div className="w-40 font-semibold uppercase">{label}</div>
-                <div className="w-4 text-center">:</div>
-                <div className="flex-1 border-b border-dotted border-black px-2 uppercase">{val}</div>
-              </div>
-            ))}
-          </div>
-
-          <div className="font-semibold text-[14px] mb-2 uppercase">CATATAN MINIT :</div>
-
-          {/* Table Kandungan */}
-          <div className="mb-6">
-            <div className="font-bold text-center border border-black p-1 bg-gray-100 uppercase text-[14px]">KANDUNGAN KURSUS</div>
-            
-            <div className="border-x border-b border-black p-3 text-[14px] min-h-[70px]">
-              <span className="font-semibold underline">Penganjuran:</span><br/>
-              <div className="whitespace-pre-wrap mt-1 text-justify">{r.kandunganPenganjuran}</div>
-            </div>
-            
-            <div className="border-x border-b border-black p-3 text-[14px] min-h-[70px]">
-              <span className="font-semibold underline">Objektif Kursus:</span><br/>
-              <div className="whitespace-pre-wrap mt-1 text-justify">{r.kandunganObjektif}</div>
-            </div>
-            
-            <div className="border-x border-b border-black p-3 text-[14px] min-h-[100px]">
-              <span className="font-semibold underline">Kandungan Kursus LCML:</span><br/>
-              <div className="whitespace-pre-wrap mt-1 text-justify">{r.kandunganKandungan}</div>
-            </div>
-            
-            <div className="border-x border-b border-black p-3 text-[14px] min-h-[70px]">
-              <span className="font-semibold underline">Lain-Lain:</span><br/>
-              <div className="whitespace-pre-wrap mt-1 text-justify">{r.kandunganLain}</div>
-            </div>
-          </div>
-
-          {/* Tindakan Susulan */}
-          <div className="mb-12 border border-black p-3 text-[14px] min-h-[100px]">
-            <div className="font-semibold mb-2 underline uppercase">TINDAKAN SUSULAN OLEH KETUA JABATAN:</div>
-            <div className="whitespace-pre-wrap text-justify">{r.tindakanSusulan}</div>
-          </div>
-
-          {/* Ruangan Tandatangan */}
-          <div className="flex justify-between mt-16 text-[14px] font-semibold">
-            <div className="text-center">
-              <p className="mb-16">TANDATANGAN PEGAWAI</p>
-              <p className="border-t border-dotted border-black w-56 mx-auto pt-1 whitespace-pre uppercase">
-                ( {r.namaPegawai} )
-              </p>
-            </div>
-            <div className="text-center">
-              <p className="mb-16">TANDATANGAN DAN CAP JABATAN</p>
-              <p className="border-t border-dotted border-black w-64 mx-auto pt-1 whitespace-pre">
-                (                                                )
-              </p>
-            </div>
-          </div>
-
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <>
-      {/* CSS untuk mod cetakan dan latar belakang */}
-      <style>{`
+    <style>
         @media print {
-          body { background-color: white; margin: 0; padding: 0; }
-          .no-print { display: none !important; }
-          .no-print-bg { padding: 0; }
-          .print-view { 
-            display: block !important; 
-            margin: 0 !important; 
-            padding: 0 !important; 
-            border: none !important; 
-            box-shadow: none !important; 
-            width: 100% !important; 
-            max-width: none !important; 
-          }
-          @page { size: A4 portrait; margin: 15mm; }
+            body { background-color: white; margin: 0; padding: 0; }
+            .no-print { display: none !important; }
+            .no-print-bg { padding: 0; }
+            .print-view { 
+                display: block !important; 
+                margin: 0 !important; 
+                padding: 0 !important; 
+                border: none !important; 
+                box-shadow: none !important; 
+                width: 100% !important; 
+                max-width: none !important; 
+            }
+            @page { size: A4 portrait; margin: 15mm; }
         }
-      `}</style>
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div id="root"></div>
 
-      <div className="min-h-screen bg-gray-100 font-sans flex flex-col">
-        {/* Header App */}
-        <header className="bg-blue-800 text-white shadow-md p-4 no-print">
-          <div className="container mx-auto max-w-6xl flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="bg-white p-1 rounded-full w-12 h-12 flex items-center justify-center">
-                <img src="logo.png" alt="Logo" className="w-10 h-10 object-contain" onError={(e) => e.target.style.display='none'} />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold tracking-wide">Sistem Minit Curai</h1>
-                <p className="text-xs text-blue-200">SK Pendidikan Khas Miri</p>
-              </div>
-            </div>
-            <nav className="flex space-x-2">
-              <button 
-                onClick={() => setActiveTab('form')} 
-                className={`px-4 py-2 rounded-md flex items-center transition-colors ${activeTab === 'form' ? 'bg-blue-600 font-semibold shadow-inner' : 'hover:bg-blue-700'}`}
-              >
-                <FileText className="w-4 h-4 mr-2" /> Isi Borang
-              </button>
-              <button 
-                onClick={() => setActiveTab('list')} 
-                className={`px-4 py-2 rounded-md flex items-center transition-colors ${activeTab === 'list' ? 'bg-blue-600 font-semibold shadow-inner' : 'hover:bg-blue-700'}`}
-              >
-                <List className="w-4 h-4 mr-2" /> Senarai Rekod
-              </button>
-            </nav>
-          </div>
-        </header>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
 
-        {/* Notifikasi Toast */}
-        {toastMessage && (
-          <div className="fixed top-20 right-4 z-50 animate-bounce no-print">
-            <div className={`rounded-lg shadow-lg px-6 py-4 flex items-center ${toastMessage.type === 'success' ? 'bg-green-100 border border-green-400 text-green-800' : 'bg-red-100 border border-red-400 text-red-800'}`}>
-              {toastMessage.type === 'success' ? <CheckCircle className="w-5 h-5 mr-2" /> : <AlertCircle className="w-5 h-5 mr-2" />}
-              {toastMessage.msg}
-            </div>
-          </div>
-        )}
+        // --- KONFIGURASI FIREBASE ---
+        // Jika anda mengehos (host) sistem ini di pelayan sendiri (seperti Cloudflare), 
+        // anda perlu meletakkan Firebase Config anda di bawah untuk fungsi pangkalan data.
+        // Jika dibiarkan kosong, sistem masih boleh berfungsi untuk cetak PDF sahaja.
+        
+        let firebaseConfig = null;
+        if (typeof __firebase_config !== 'undefined') {
+            firebaseConfig = JSON.parse(__firebase_config);
+        } else {
+            // SILA MASUKKAN CONFIG FIREBASE ANDA DI SINI UNTUK HOSTING SENDIRI:
+            /*
+            firebaseConfig = {
+                apiKey: "API_KEY_ANDA",
+                authDomain: "DOMAIN_ANDA.firebaseapp.com",
+                projectId: "PROJECT_ID_ANDA",
+                storageBucket: "BUCKET_ANDA.appspot.com",
+                messagingSenderId: "SENDER_ID",
+                appId: "APP_ID"
+            };
+            */
+        }
 
-        {/* Content Area */}
-        <main className="flex-1">
-          {activeTab === 'form' && <FormView />}
-          {activeTab === 'list' && <ListView />}
-          {activeTab === 'print' && <PrintView />}
-        </main>
-      </div>
-    </>
-  );
-}
+        const app = firebaseConfig ? firebase.initializeApp(firebaseConfig) : null;
+        const auth = app ? firebase.auth() : null;
+        const db = app ? firebase.firestore() : null;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'skpk-miri-minit-curai';
+
+        const senaraiNamaStaff = [
+            "AZIZ BIN TAHIR", "MOHAMAD ABIDIN BIN SIPEK", "LING MEE CHOO", "SALIHIN BIN AHMAD",
+            "AIDA MASTURINA BINTI HAMKA", "AIFA NUR BESTARI BINTI RADUAN", "BRYAN ANAK CONSTANT",
+            "CHRISTIAN SIMON", "DLIYANA ANAK JOHN", "EIFILISIA AMBER ANAK MERVIN", "FAZRI BIN BAKERI",
+            "HAIROL BIN ISMAIL", "HILWA HAYATI BINTI MOHAMAD AJALAN", "JACQUELINE TIONG HOE DING",
+            "JERIAH ANAK SIMON", "JIMMY ANAK PETER", "KHAIRI BIN SAHARI", 
+            "MARY JANE AMOI UMPANG ANAK DANIEL MAWAT", "MOHD RAFEEQ BIN SULAIMAN", 
+            "MUHAMMAD ZULHUSAINI BIN ABDUL WAHAB", "NUR HIDAYU BINTI YUSOP", 
+            "NURUL HUDA BTE MOHD IHWAN", "NUR AZLIN BINTI NORIZAN", "NUR FADZLIAH AMAL BINTI OSMAN",
+            "SABARIAH BINTI SOLHI", "SYAEEZA LIANA BINTI RAMLI", "TENG RU YUN", "TING HUA EE",
+            "TING YU YONG", "VANITHA A/P SUBRAMANIAM", "WONG PICK KING", "ZEPRINA ANAK BENIK",
+            "NORMIRI BINTI ABDULLAH", "HAZUANI BINTI HIPNI", "HELLEN RANJA ANAK BELI", 
+            "NORAISYAH BINTI ASHARI", "KAMARIA BINTI BUJANG", "AZENI BIN MAT", "EVELYN SENA ANAK USSIK",
+            "MARIATI BINTI JULAIHI", "ALEXANDER LIPA ANAK RANTIE"
+        ];
+
+        function SistemMinitCurai() {
+            const [activeTab, setActiveTab] = useState('form');
+            const [records, setRecords] = useState([]);
+            const [currentRecord, setCurrentRecord] = useState(null);
+            const [user, setUser] = useState(null);
+            const [isSubmitting, setIsSubmitting] = useState(false);
+            const [toastMessage, setToastMessage] = useState(null);
+
+            const [formData, setFormData] = useState({
+                rujukanBil: '', namaPegawai: '', jawatan: '', perkara: '', tarikh: '', tempat: '',
+                anjuran: '', pengerusi: '', bahanEdaran: 'Ada', kandunganPenganjuran: '',
+                kandunganObjektif: '', kandunganKandungan: '', kandunganLain: '', tindakanSusulan: ''
+            });
+
+            // 1. Pengesahan Pengguna (Auth)
+            useEffect(() => {
+                if (!auth) return;
+                const initAuth = async () => {
+                    try {
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await auth.signInWithCustomToken(__initial_auth_token);
+                        } else {
+                            await auth.signInAnonymously();
+                        }
+                    } catch (error) {
+                        console.error("Auth Error:", error);
+                    }
+                };
+                initAuth();
+                const unsubscribe = auth.onAuthStateChanged(setUser);
+                return () => unsubscribe();
+            }, []);
+
+            // 2. Tarik Rekod dari Pangkalan Data
+            useEffect(() => {
+                if (!user || !db) return;
+                const path = `artifacts/${appId}/public/data/minit_curai`;
+                
+                const unsubscribe = db.collection(path).onSnapshot((snapshot) => {
+                    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    data.sort((a, b) => {
+                        const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : Date.now();
+                        const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : Date.now();
+                        return timeB - timeA;
+                    });
+                    setRecords(data);
+                }, (error) => {
+                    console.error("Firestore Error:", error);
+                });
+                
+                return () => unsubscribe();
+            }, [user]);
+
+            const handleChange = (e) => {
+                const { name, value } = e.target;
+                setFormData(prev => ({ ...prev, [name]: value }));
+            };
+
+            const showToast = (msg, type = 'success') => {
+                setToastMessage({ msg, type });
+                setTimeout(() => setToastMessage(null), 3000);
+            };
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                if (!db || !user) {
+                    showToast("Pangkalan data tidak dikesan. Sila tetapkan Firebase Config.", "error");
+                    return;
+                }
+                
+                setIsSubmitting(true);
+                try {
+                    const path = `artifacts/${appId}/public/data/minit_curai`;
+                    await db.collection(path).add({
+                        ...formData,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        userId: user.uid
+                    });
+                    showToast("Minit Curai berjaya disimpan!", "success");
+                    setFormData({
+                        rujukanBil: '', namaPegawai: '', jawatan: '', perkara: '', tarikh: '', tempat: '', 
+                        anjuran: '', pengerusi: '', bahanEdaran: 'Ada', kandunganPenganjuran: '', 
+                        kandunganObjektif: '', kandunganKandungan: '', kandunganLain: '', tindakanSusulan: ''
+                    });
+                    setActiveTab('list');
+                } catch (error) {
+                    console.error("Submit error:", error);
+                    showToast("Ralat ketika menyimpan borang.", "error");
+                } finally {
+                    setIsSubmitting(false);
+                }
+            };
+
+            const FormView = () => (
+                <div className="max-w-4xl mx-auto bg-white p-8 rounded-lg shadow-md no-print mt-6 mb-12">
+                    <h2 className="text-2xl font-bold mb-6 text-gray-800 border-b pb-2 flex items-center">
+                        <i className="fas fa-plus-circle text-blue-600 mr-2"></i> Isi Borang Minit Curai Baru
+                    </h2>
+                    <form onSubmit={handleSubmit} className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="col-span-1 md:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700">Rujukan Bilangan</label>
+                                <div className="flex items-center mt-1">
+                                    <span className="bg-gray-100 border border-r-0 border-gray-300 rounded-l-md px-3 py-2 text-sm text-gray-600 font-semibold whitespace-nowrap">
+                                        SKPKM.500-8/8/4(
+                                    </span>
+                                    <input type="text" name="rujukanBil" value={formData.rujukanBil} onChange={handleChange} className="flex-1 block w-full rounded-none border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" placeholder="Cth: 12 (Boleh dikosongkan)" />
+                                    <span className="bg-gray-100 border border-l-0 border-gray-300 rounded-r-md px-3 py-2 text-sm text-gray-600 font-semibold">
+                                        )
+                                    </span>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Nama</label>
+                                <select name="namaPegawai" required value={formData.namaPegawai} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border bg-white">
+                                    <option value="">-- Sila Pilih Nama --</option>
+                                    {senaraiNamaStaff.map((nama, index) => (
+                                        <option key={index} value={nama}>{nama}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Jawatan</label>
+                                <input type="text" name="jawatan" required value={formData.jawatan} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" placeholder="Cth: Guru Akademik Biasa" />
+                            </div>
+                            <div className="col-span-1 md:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700">Perkara / Tajuk Kursus</label>
+                                <input type="text" name="perkara" required value={formData.perkara} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" placeholder="Tajuk seperti dalam surat panggilan..." />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Tarikh / Tempoh Kursus</label>
+                                <input type="text" name="tarikh" required value={formData.tarikh} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" placeholder="Cth: 12 - 14 Mei 2026" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Tempat</label>
+                                <input type="text" name="tempat" required value={formData.tempat} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" placeholder="Cth: PKG Miri" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Anjuran</label>
+                                <input type="text" name="anjuran" required value={formData.anjuran} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" placeholder="Cth: PPD Miri" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Pengerusi</label>
+                                <input type="text" name="pengerusi" required value={formData.pengerusi} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" placeholder="Nama pengerusi / penceramah utama" />
+                            </div>
+                            <div className="col-span-1 md:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700">Bahan Edaran</label>
+                                <div className="flex items-center space-x-6 mt-2">
+                                    <label className="flex items-center cursor-pointer">
+                                        <input type="radio" name="bahanEdaran" value="Ada" checked={formData.bahanEdaran === 'Ada'} onChange={handleChange} className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500" />
+                                        <span className="ml-2 text-gray-700">Ada</span>
+                                    </label>
+                                    <label className="flex items-center cursor-pointer">
+                                        <input type="radio" name="bahanEdaran" value="Tiada" checked={formData.bahanEdaran === 'Tiada'} onChange={handleChange} className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500" />
+                                        <span className="ml-2 text-gray-700">Tiada</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="mt-8 border-t pt-6 space-y-6">
+                            <h3 className="text-lg font-bold text-gray-800">Catatan Minit / Kandungan Kursus</h3>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">1. Penganjuran</label>
+                                <textarea name="kandunganPenganjuran" required value={formData.kandunganPenganjuran} onChange={handleChange} rows="3" className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" placeholder="Nyatakan penganjur, tempoh kursus, bilangan peserta, tempat..."></textarea>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">2. Objektif Kursus</label>
+                                <textarea name="kandunganObjektif" required value={formData.kandunganObjektif} onChange={handleChange} rows="3" className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" placeholder="Nyatakan objektif kursus..."></textarea>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">3. Kandungan Kursus LCML</label>
+                                <textarea name="kandunganKandungan" required value={formData.kandunganKandungan} onChange={handleChange} rows="4" className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" placeholder="Nyatakan kandungan kursus sepanjang tempoh, aktiviti/tugasan diberi..."></textarea>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">4. Lain-Lain</label>
+                                <textarea name="kandunganLain" required value={formData.kandunganLain} onChange={handleChange} rows="3" className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" placeholder="Nyatakan dapatan kursus, apa yang hendak dilakukan apabila kembali ke sekolah nanti..."></textarea>
+                            </div>
+                            <div className="bg-gray-50 p-4 rounded-md border border-gray-200">
+                                <label className="block text-sm font-bold text-gray-800 mb-1">Tindakan Susulan Oleh Ketua Jabatan</label>
+                                <p className="text-xs text-gray-500 mb-2">Maklumkan apa tindakan susulan peserta hendak lakukan supaya ketua jabatan boleh memantau. (Boleh dibiarkan kosong)</p>
+                                <textarea name="tindakanSusulan" value={formData.tindakanSusulan} onChange={handleChange} rows="3" className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border" placeholder="Tindakan susulan anda..."></textarea>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end pt-4">
+                            <button type="submit" disabled={isSubmitting} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-md shadow-md flex items-center transition-colors disabled:bg-blue-400">
+                                {isSubmitting ? 'Menyimpan...' : <><i className="fas fa-save mr-2"></i> Simpan Minit Curai</>}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            );
+
+            const ListView = () => (
+                <div className="max-w-6xl mx-auto bg-white p-8 rounded-lg shadow-md no-print mt-6 mb-12">
+                    <h2 className="text-2xl font-bold mb-6 text-gray-800 border-b pb-2 flex items-center">
+                        <i className="fas fa-list text-blue-600 mr-2"></i> Rekod Minit Curai
+                    </h2>
+                    
+                    {records.length === 0 ? (
+                        <div className="text-center py-16 text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                            <i className="fas fa-file-alt text-4xl mb-4 text-gray-400"></i>
+                            <p className="text-lg">Tiada rekod minit curai buat masa ini.</p>
+                            <button onClick={() => setActiveTab('form')} className="mt-4 text-blue-600 hover:underline">Isi borang pertama</button>
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full divide-y divide-gray-200 border">
+                                <thead className="bg-gray-50">
+                                    <tr>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No. Rujukan</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Perkara / Kursus</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tarikh</th>
+                                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Tindakan</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                    {records.map((record) => (
+                                        <tr key={record.id} className="hover:bg-gray-50 transition-colors">
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                                SKPKM.500-8/8/4({record.rujukanBil})
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{record.namaPegawai}</td>
+                                            <td className="px-6 py-4 text-sm text-gray-700 max-w-xs truncate" title={record.perkara}>{record.perkara}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{record.tarikh}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                                <button 
+                                                    onClick={() => { setCurrentRecord(record); setActiveTab('print'); }}
+                                                    className="text-blue-600 hover:text-blue-900 bg-blue-50 px-3 py-1 rounded border border-blue-200 flex items-center ml-auto transition-colors"
+                                                >
+                                                    <i className="fas fa-print mr-1"></i> Papar & Cetak
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            );
+
+            const PrintView = () => {
+                if (!currentRecord) return null;
+                const r = currentRecord;
+
+                return (
+                    <div className="print-wrapper py-6 no-print-bg">
+                        <div className="max-w-[210mm] mx-auto mb-4 flex justify-between items-center no-print">
+                            <button onClick={() => setActiveTab('list')} className="text-gray-600 hover:text-gray-900 flex items-center bg-white px-4 py-2 rounded shadow-sm border border-gray-200">
+                                <i className="fas fa-arrow-left mr-2"></i> Kembali ke Senarai
+                            </button>
+                            <div className="flex items-center space-x-4">
+                                <span className="text-sm text-gray-500">Pilih 'Save as PDF' di tetingkap cetakan</span>
+                                <button onClick={() => window.print()} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded shadow-md flex items-center transition-colors">
+                                    <i className="fas fa-print mr-2"></i> Jana PDF / Cetak
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="print-view bg-white text-black mx-auto w-full max-w-[210mm] min-h-[297mm] p-[20mm] shadow-xl border border-gray-300 relative">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="w-24 flex-shrink-0">
+                                    <img src="logo.png" alt="Logo SKPK Miri" className="w-24 h-24 object-contain" 
+                                         onError={(e) => { 
+                                             e.target.onerror = null; 
+                                             e.target.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="none" stroke="%23000" stroke-width="2"/><text x="50" y="50" dominant-baseline="middle" text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold">LOGO</text></svg>' 
+                                         }} 
+                                    />
+                                </div>
+                                <div className="flex-1 text-center">
+                                    <p className="font-bold text-lg m-0">SEKOLAH KEBANGSAAN PENDIDIKAN KHAS MIRI</p>
+                                    <p className="m-0 text-base">JALAN DATUK MUIP, PIASAU JAYA</p>
+                                    <p className="m-0 text-base">98000 MIRI, SARAWAK</p>
+                                </div>
+                                <div className="w-24 flex-shrink-0"></div>
+                            </div>
+
+                            <div className="text-right mb-6 text-sm font-semibold">
+                                <p>RUJUKAN BIL: SKPKM.500-8/8/4({r.rujukanBil})</p>
+                            </div>
+
+                            <h1 className="text-center font-bold text-lg underline mb-8">BORANG LAPORAN / MINIT CURAI</h1>
+
+                            <div className="text-[14px] leading-relaxed mb-6 space-y-2">
+                                <div className="flex">
+                                    <div className="w-40 font-semibold uppercase">NAMA</div>
+                                    <div className="w-4 text-center">:</div>
+                                    <div className="flex-1 border-b border-dotted border-black font-semibold uppercase px-2">{r.namaPegawai}</div>
+                                    <div className="w-24 font-semibold uppercase text-right mr-4">JAWATAN:</div>
+                                    <div className="w-48 border-b border-dotted border-black font-semibold uppercase px-2">{r.jawatan}</div>
+                                </div>
+                                
+                                {[
+                                    ['PERKARA', r.perkara],
+                                    ['TARIKH', r.tarikh],
+                                    ['TEMPAT', r.tempat],
+                                    ['ANJURAN', r.anjuran],
+                                    ['PENGERUSI', r.pengerusi],
+                                    ['BAHAN EDARAN', r.bahanEdaran]
+                                ].map(([label, val]) => (
+                                    <div className="flex" key={label}>
+                                        <div className="w-40 font-semibold uppercase">{label}</div>
+                                        <div className="w-4 text-center">:</div>
+                                        <div className="flex-1 border-b border-dotted border-black px-2 uppercase">{val}</div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="font-semibold text-[14px] mb-2 uppercase">CATATAN MINIT :</div>
+
+                            <div className="mb-6">
+                                <div className="font-bold text-center border border-black p-1 bg-gray-100 uppercase text-[14px]">KANDUNGAN KURSUS</div>
+                                <div className="border-x border-b border-black p-3 text-[14px] min-h-[70px]">
+                                    <span className="font-semibold underline">Penganjuran:</span><br/>
+                                    <div className="whitespace-pre-wrap mt-1 text-justify">{r.kandunganPenganjuran}</div>
+                                </div>
+                                <div className="border-x border-b border-black p-3 text-[14px] min-h-[70px]">
+                                    <span className="font-semibold underline">Objektif Kursus:</span><br/>
+                                    <div className="whitespace-pre-wrap mt-1 text-justify">{r.kandunganObjektif}</div>
+                                </div>
+                                <div className="border-x border-b border-black p-3 text-[14px] min-h-[100px]">
+                                    <span className="font-semibold underline">Kandungan Kursus LCML:</span><br/>
+                                    <div className="whitespace-pre-wrap mt-1 text-justify">{r.kandunganKandungan}</div>
+                                </div>
+                                <div className="border-x border-b border-black p-3 text-[14px] min-h-[70px]">
+                                    <span className="font-semibold underline">Lain-Lain:</span><br/>
+                                    <div className="whitespace-pre-wrap mt-1 text-justify">{r.kandunganLain}</div>
+                                </div>
+                            </div>
+
+                            <div className="mb-12 border border-black p-3 text-[14px] min-h-[100px]">
+                                <div className="font-semibold mb-2 underline uppercase">TINDAKAN SUSULAN OLEH KETUA JABATAN:</div>
+                                <div className="whitespace-pre-wrap text-justify">{r.tindakanSusulan}</div>
+                            </div>
+
+                            <div className="flex justify-between mt-16 text-[14px] font-semibold">
+                                <div className="text-center">
+                                    <p className="mb-16">TANDATANGAN PEGAWAI</p>
+                                    <p className="border-t border-dotted border-black w-56 mx-auto pt-1 whitespace-pre uppercase">
+                                        ( {r.namaPegawai} )
+                                    </p>
+                                </div>
+                                <div className="text-center">
+                                    <p className="mb-16">TANDATANGAN DAN CAP JABATAN</p>
+                                    <p className="border-t border-dotted border-black w-64 mx-auto pt-1 whitespace-pre">
+                                        (                                                )
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="min-h-screen font-sans flex flex-col">
+                    <header className="bg-blue-800 text-white shadow-md p-4 no-print">
+                        <div className="container mx-auto max-w-6xl flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                                <div className="bg-white p-1 rounded-full w-12 h-12 flex items-center justify-center">
+                                    <img src="logo.png" alt="Logo" className="w-10 h-10 object-contain" onError={(e) => e.target.style.display='none'} />
+                                </div>
+                                <div>
+                                    <h1 className="text-xl font-bold tracking-wide">Sistem Minit Curai</h1>
+                                    <p className="text-xs text-blue-200">SK Pendidikan Khas Miri</p>
+                                </div>
+                            </div>
+                            <nav className="flex space-x-2">
+                                <button 
+                                    onClick={() => setActiveTab('form')} 
+                                    className={`px-4 py-2 rounded-md flex items-center transition-colors ${activeTab === 'form' ? 'bg-blue-600 font-semibold shadow-inner' : 'hover:bg-blue-700'}`}
+                                >
+                                    <i className="fas fa-file-alt mr-2"></i> Isi Borang
+                                </button>
+                                <button 
+                                    onClick={() => setActiveTab('list')} 
+                                    className={`px-4 py-2 rounded-md flex items-center transition-colors ${activeTab === 'list' ? 'bg-blue-600 font-semibold shadow-inner' : 'hover:bg-blue-700'}`}
+                                >
+                                    <i className="fas fa-list mr-2"></i> Senarai Rekod
+                                </button>
+                            </nav>
+                        </div>
+                    </header>
+
+                    {toastMessage && (
+                        <div className="fixed top-20 right-4 z-50 animate-bounce no-print">
+                            <div className={`rounded-lg shadow-lg px-6 py-4 flex items-center ${toastMessage.type === 'success' ? 'bg-green-100 border border-green-400 text-green-800' : 'bg-red-100 border border-red-400 text-red-800'}`}>
+                                <i className={`fas ${toastMessage.type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'} mr-2`}></i>
+                                {toastMessage.msg}
+                            </div>
+                        </div>
+                    )}
+
+                    <main className="flex-1">
+                        {activeTab === 'form' && <FormView />}
+                        {activeTab === 'list' && <ListView />}
+                        {activeTab === 'print' && <PrintView />}
+                    </main>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<SistemMinitCurai />);
+    </script>
+</body>
+</html>
