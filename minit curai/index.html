@@ -51,27 +51,20 @@
         const { useState, useEffect, useRef } = React;
 
         // --- KONFIGURASI FIREBASE ---
-        let firebaseConfig = null;
-        if (typeof __firebase_config !== 'undefined') {
-            firebaseConfig = JSON.parse(__firebase_config);
-        } else {
-            // SILA MASUKKAN CONFIG FIREBASE ANDA DI SINI UNTUK HOSTING SENDIRI
-            /*
-            firebaseConfig = {
-                apiKey: "API_KEY_ANDA",
-                authDomain: "DOMAIN_ANDA.firebaseapp.com",
-                projectId: "PROJECT_ID_ANDA",
-                storageBucket: "BUCKET_ANDA.appspot.com",
-                messagingSenderId: "SENDER_ID",
-                appId: "APP_ID"
-            };
-            */
-        }
+        const firebaseConfig = {
+            apiKey: "AIzaSyCjJFKN3G9wFf-WigjPLN_p1Ukj_yqUga0",
+            authDomain: "minitcurai-22677.firebaseapp.com",
+            projectId: "minitcurai-22677",
+            storageBucket: "minitcurai-22677.firebasestorage.app",
+            messagingSenderId: "993950326474",
+            appId: "1:993950326474:web:8e833180275aa538951e33",
+            measurementId: "G-SYGGMK3GG0"
+        };
 
-        const app = firebaseConfig ? initializeApp(firebaseConfig) : null;
-        const auth = app ? getAuth(app) : null;
-        const db = app ? getFirestore(app) : null;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'skpk-miri-minit-curai';
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = 'skpk-miri-minit-curai';
 
         const senaraiNamaStaff = [
             "AZIZ BIN TAHIR", "MOHAMAD ABIDIN BIN SIPEK", "LING MEE CHOO", "SALIHIN BIN AHMAD",
